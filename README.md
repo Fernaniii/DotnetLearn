@@ -1,4 +1,4 @@
 # NewRepo2
 
 ### Generic Demo
-Generic Demo/Csharp Generic.md
+[link] (Generic Demo/Csharp Generic.md)
