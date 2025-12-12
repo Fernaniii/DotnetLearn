@@ -1,150 +1,163 @@
 ﻿
 
-    //public enum RequestType
-    //{
-    //    OnDuty,
-    //    Leave,
-    //    AttendanceCorrection,
-    //    Other
-    //}
+public enum RequestType
+{
+    OnDuty,
+    Leave,
+    AttendanceCorrection,
+    Other
+}
+
+public enum ApprovalStatus
+{
+    Approved,
+    Declined,
+    InProgress,
+    Pending
+}
+
+public enum ApprovalLevel
+{
+    Manager,
+    DepartmentHead,
+    Chief
+}
 
 
-    public interface IApprover
+public interface IHandler
+{
+    IHandler SetNext(IHandler handler);
+
+    object Handle(object request);
+}
+
+// The default chaining behavior can be implemented inside a base handler
+// class.
+abstract class AbstractHandler : IHandler
+{
+    private IHandler _nextHandler;
+
+    public IHandler SetNext(IHandler handler)
     {
-        IApprover SetNext(IApprover handler);
+        this._nextHandler = handler;
 
-        object Approve(object request);
+        // Returning a handler from here will let us link handlers in a
+        // convenient way like this:
+        // monkey.SetNext(squirrel).SetNext(dog);
+        return handler;
     }
 
-    // The default chaining behavior can be implemented inside a base handler
-    // class.
-    abstract class AbstractApprover : IApprover
+    public virtual object Handle(object request)
     {
-        private IApprover _nextHandler;
-
-        public IApprover SetNext(IApprover handler)
+        if (this._nextHandler != null)
         {
-            this._nextHandler = handler;
-
-            // Returning a handler from here will let us link handlers in a
-            // convenient way like this:
-            // monkey.SetNext(squirrel).SetNext(dog);
-            return handler;
+            return this._nextHandler.Handle(request);
         }
-
-        public virtual object Approve(object request)
+        else
         {
-            if (this._nextHandler != null)
+            return null;
+        }
+    }
+}
+
+class MonkeyHandler : AbstractHandler
+{
+    public override object Handle(object request)
+    {
+        if ((request as string) == "Banana")
+        {
+            return $"Monkey: I'll eat the {request.ToString()}.\n";
+        }
+        else
+        {
+            return base.Handle(request);
+        }
+    }
+}
+
+class SquirrelHandler : AbstractHandler
+{
+    public override object Handle(object request)
+    {
+        if (request.ToString() == "Nut")
+        {
+            return $"Squirrel: I'll eat the {request.ToString()}.\n";
+        }
+        else
+        {
+            return base.Handle(request);
+        }
+    }
+}
+
+class DogHandler : AbstractHandler
+{
+    public override object Handle(object request)
+    {
+        if (request.ToString() == "MeatBall")
+        {
+            return $"Dog: I'll eat the {request.ToString()}.\n";
+        }
+        else
+        {
+            return base.Handle(request);
+        }
+    }
+}
+
+class Client
+{
+    public static void ClientCode(AbstractHandler handler)
+    {
+        foreach (var food in new List<string> { "Nut", "Banana", "MeatBall" })
+        {
+            Console.WriteLine($"Client: Who wants a {food}?");
+
+            var result = handler.Handle(food);
+
+            if (result != null)
             {
-                return this._nextHandler.Approve(request);
+                Console.Write($"   {result}");
             }
             else
             {
-                return null;
+                Console.WriteLine($"   {food} was left untouched.");
             }
         }
     }
+}
 
-    class ManagerApprover : AbstractApprover
+class Program
+{
+    static void Main(string[] args)
     {
-        public override object Approve(object request)
-        {
-            if ((request as string) == "On-Duty")
-            {
-                return $"Manager: I'll Approve the {request.ToString()}.\n";
-            }
-            else
-            {
-                return base.Approve(request);
-            }
-        }
+        // The other part of the client code constructs the actual chain.
+        var monkey = new MonkeyHandler();
+        var squirrel = new SquirrelHandler();
+        var dog = new DogHandler();
+
+        monkey.SetNext(squirrel).SetNext(dog);
+
+        // The client should be able to send a request to any handler, not
+        // just the first one in the chain.
+        Console.WriteLine("Chain: Monkey > Squirrel > Dog\n");
+        Client.ClientCode(monkey);
+        Console.WriteLine();
+
+        Console.WriteLine("Subchain: Squirrel > Dog\n");
+        Client.ClientCode(squirrel);
     }
-
-    class DeptHeadApprover : AbstractApprover
-    {
-        public override object Approve(object request)
-        {
-            if (request.ToString() == "Leave")
-            {
-                return $"DeptHead: I'll Approve the {request.ToString()}.\n";
-            }
-            else
-            {
-                return base.Approve(request);
-            }
-        }
-    }
+}
 
 
-    class ChiefApprover : AbstractApprover
-    {
-        public override object Approve(object request)
-        {
-            if (request.ToString() == "Attendance Correction")
-            {
-                return $"Chief: I'll Approve the {request.ToString()}.\n";
-            }
-            else
-            {
-                return base.Approve(request);
-            }
-        }
-    }
-
-    class Employee
-    {
-        // The client code is usually suited to work with a single handler. In
-        // most cases, it is not even aware that the handler is part of a chain.
-        public static void EmployeeCode(AbstractApprover handler)
-        {
-            foreach (var request in new List<string> { "On-Duty", "Leave", "Attendance Correction" })
-            {
-                Console.WriteLine($"Employee: Who can Approve my {request}?");
-
-                var result = handler.Approve(request);
-
-                if (result != null)
-                {
-                    Console.Write($"   {result}");
-                }
-                else
-                {
-                    Console.WriteLine($"   {request} was left untouched.");
-                }
-            }
-        }
-    }
-
-    class Program
-    {
-        static void Main(string[] args)
-        {
-            // The other part of the client code constructs the actual chain.
-            var manager = new ManagerApprover();
-            var departmentHead = new DeptHeadApprover();
-            var chiefApprover = new ChiefApprover();
-
-            var Sequence = manager.SetNext(departmentHead).SetNext(chiefApprover);
-
-            // The client should be able to send a request to any handler, not
-            // just the first one in the chain.
-            Console.WriteLine("Chain: Manager > Department Head > Chief Approver\n");
-            Employee.EmployeeCode(manager);
-            Console.WriteLine();
+// TODO: Scenario 1: Manager is the only approver of On-Duty Request
+// TODO: Scenario 2: Manager is the First approval and the Department Head is the Final approver of Leave Request and Attensdance Correction Request, Chief is not Involved
+// TODO: Scenario 3: Manager's  request Directly to the Department Head
+// TODO: Special Scenario: Manager , Department Head then the chief is the sequence of all the Approval
 
 
-            Console.WriteLine("Subchain: Department Head > Chief Approver\n");
-            Employee.EmployeeCode(departmentHead);
-            Console.WriteLine();
-
-
-            Console.WriteLine("Sub Chain: Chief Approver\n");
-            Employee.EmployeeCode(chiefApprover);
-            Console.WriteLine();
-    }
-    }
-
-//  Scenario 1: Manager is the only approver of On-Duty Request
-//  Scenario 2: Manager is the First approval and the Department Head is the Final approver of Leave Request and Attensdance Correction Request, Chief is not Involved
-//  Scenario 3: Manager's  request Directly to the Department Head
-//  Special Scenario: Manager , Department Head then the chief is the sequence of all the Approval
+//  Flow
+// Employee apply for Leave Request
+// Then the Manager approve it
+// then it goes to Department Head for approval
+// following those Scenario
