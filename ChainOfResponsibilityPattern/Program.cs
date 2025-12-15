@@ -1,4 +1,6 @@
 ﻿
+using System;
+using System.Collections.Generic;
 
 public enum RequestType
 {
@@ -23,107 +25,89 @@ public enum ApprovalLevel
     Chief
 }
 
-
-public interface IHandler
+public class ApprovalRequest
 {
-    IHandler SetNext(IHandler handler);
-
-    object Handle(object request);
+    public RequestType RequestType { get; set; }
+    public ApprovalStatus Status { get; set; } = ApprovalStatus.Pending;
+    public string Remarks { get; set; } = "";
 }
 
-// The default chaining behavior can be implemented inside a base handler
-// class.
-abstract class AbstractHandler : IHandler
+public interface IApprover
 {
-    private IHandler _nextHandler;
+    IApprover SetNext(IApprover handler);
+    ApprovalRequest Handle(ApprovalRequest request);
+}
 
-    public IHandler SetNext(IHandler handler)
+abstract class ApproverBase : IApprover
+{
+    private IApprover _next;
+
+    public IApprover SetNext(IApprover handler)
     {
-        this._nextHandler = handler;
-
-        // Returning a handler from here will let us link handlers in a
-        // convenient way like this:
-        // monkey.SetNext(squirrel).SetNext(dog);
+        _next = handler;
         return handler;
     }
 
-    public virtual object Handle(object request)
+    public virtual ApprovalRequest Handle(ApprovalRequest request)
     {
-        if (this._nextHandler != null)
-        {
-            return this._nextHandler.Handle(request);
-        }
-        else
-        {
-            return null;
-        }
+        return _next?.Handle(request);
     }
 }
 
-class MonkeyHandler : AbstractHandler
+class ManagerApprover : ApproverBase
 {
-    public override object Handle(object request)
+    public override ApprovalRequest Handle(ApprovalRequest request)
     {
-        if ((request as string) == "Banana")
+        if (request.RequestType == RequestType.OnDuty ||
+            request.RequestType == RequestType.Leave ||
+            request.RequestType == RequestType.AttendanceCorrection)
         {
-            return $"Monkey: I'll eat the {request.ToString()}.\n";
+            Console.WriteLine("Manager: Approved.");
+            request.Remarks += "Manager approved. ";
+            request.Status = ApprovalStatus.InProgress;
         }
-        else
-        {
-            return base.Handle(request);
-        }
+
+        return base.Handle(request);
     }
 }
 
-class SquirrelHandler : AbstractHandler
+class DepartmentHeadApprover : ApproverBase
 {
-    public override object Handle(object request)
+    public override ApprovalRequest Handle(ApprovalRequest request)
     {
-        if (request.ToString() == "Nut")
+        if (request.RequestType == RequestType.Leave ||
+            request.RequestType == RequestType.AttendanceCorrection)
         {
-            return $"Squirrel: I'll eat the {request.ToString()}.\n";
+            Console.WriteLine("Department Head: Approved.");
+            request.Remarks += "Department Head approved. ";
+            request.Status = ApprovalStatus.InProgress;
         }
-        else
-        {
-            return base.Handle(request);
-        }
+
+        return base.Handle(request);
     }
 }
 
-class DogHandler : AbstractHandler
+class ChiefApprover : ApproverBase
 {
-    public override object Handle(object request)
+    public override ApprovalRequest Handle(ApprovalRequest request)
     {
-        if (request.ToString() == "MeatBall")
-        {
-            return $"Dog: I'll eat the {request.ToString()}.\n";
-        }
-        else
-        {
-            return base.Handle(request);
-        }
+        Console.WriteLine("Chief: Approved.");
+        request.Remarks += "Chief approved. ";
+        request.Status = ApprovalStatus.Approved;
+
+        return base.Handle(request);
     }
 }
 
 class Client
 {
-    public static void ClientCode(AbstractHandler handler)
+    public static void Run(ApprovalRequest request, IApprover chain)
     {
-        foreach (var food in new List<string> { "Nut", "Banana", "MeatBall" })
-        {
-            Console.WriteLine($"Client: Who wants a {food}?");
+        Console.WriteLine($"\nRequest: {request.RequestType}");
+        var result = chain.Handle(request);
 
-            var result = handler.Handle(food);
-
-            if (result != null)
-            {
-                Console.Write($"   {result}");
-            }
-            else
-            {
-                Console.WriteLine($"   {food} was left untouched.");
-            }
-        }
+        Console.WriteLine($"Final Status: {result.Status}");
+        Console.WriteLine($"Remarks: {result.Remarks}\n");
     }
 }
 
@@ -131,21 +115,31 @@ class Program
 {
     static void Main(string[] args)
     {
-        // The other part of the client code constructs the actual chain.
-        var monkey = new MonkeyHandler();
-        var squirrel = new SquirrelHandler();
-        var dog = new DogHandler();
+        Console.WriteLine("=== APPROVAL CHAIN SIMULATION ===\n");
 
-        monkey.SetNext(squirrel).SetNext(dog);
+        // Scenario 1: Manager only, On-Duty request
+        Console.WriteLine("Scenario 1: Manager Only (On-Duty)");
+        var s1 = new ManagerApprover();
+        Client.Run(new ApprovalRequest { RequestType = RequestType.OnDuty }, s1);
 
-        // The client should be able to send a request to any handler, not
-        // just the first one in the chain.
-        Console.WriteLine("Chain: Monkey > Squirrel > Dog\n");
-        Client.ClientCode(monkey);
-        Console.WriteLine();
+        // Scenario 2: Manager -> Department Head (Leave / Attendance Correction)
+        Console.WriteLine("Scenario 2: Manager -> Department Head (Leave & Attendance Correction)");
+        var s2 = new ManagerApprover();
+        s2.SetNext(new DepartmentHeadApprover());
+        Client.Run(new ApprovalRequest { RequestType = RequestType.Leave }, s2);
+        Client.Run(new ApprovalRequest { RequestType = RequestType.AttendanceCorrection }, s2);
 
-        Console.WriteLine("Subchain: Squirrel > Dog\n");
-        Client.ClientCode(squirrel);
+        // Scenario 3: Manager’s request directly to Department Head
+        Console.WriteLine("Scenario 3: Goes Directly to Department Head");
+        var s3 = new DepartmentHeadApprover();
+        Client.Run(new ApprovalRequest { RequestType = RequestType.Leave }, s3);
+
+        // Special Scenario: Manager -> Department Head -> Chief
+        Console.WriteLine("Special Scenario: Manager -> Department Head -> Chief");
+        var s4 = new ManagerApprover();
+        s4.SetNext(new DepartmentHeadApprover())
+          .SetNext(new ChiefApprover());
+        Client.Run(new ApprovalRequest { RequestType = RequestType.Other }, s4);
     }
 }
 
