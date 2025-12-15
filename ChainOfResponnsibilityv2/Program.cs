@@ -1,98 +1,158 @@
-﻿public class CustomerRequest
+﻿public enum ApprovalStatus
 {
-    public string RequestType { get; set; }
-    public string Description { get; set; }
+    Pending,
+    InProgress,
+    Approved,
+    Rejected
+}
 
-    public CustomerRequest(string requestType, string description)
+public sealed class LeaveRequest
+{
+    public int EmployeeId { get; }
+    public int NumberOfDays { get; }
+    public string Reason { get; }
+
+    public ApprovalStatus Status { get; private set; } = ApprovalStatus.Pending;
+    public string? LastApprovedBy { get; private set; }
+
+    public LeaveRequest(int employeeId, int numberOfDays, string reason)
     {
-        RequestType = requestType;
-        Description = description;
+        if (numberOfDays <= 0)
+            throw new ArgumentOutOfRangeException(nameof(numberOfDays));
+
+        EmployeeId = employeeId;
+        NumberOfDays = numberOfDays;
+        Reason = reason ?? throw new ArgumentNullException(nameof(reason));
+    }
+
+    public void MarkInProgress(string approver)
+    {
+        Status = ApprovalStatus.InProgress;
+        LastApprovedBy = approver;
+    }
+
+    public void MarkApproved(string approver)
+    {
+        Status = ApprovalStatus.Approved;
+        LastApprovedBy = approver;
+    }
+
+    public void MarkRejected(string approver)
+    {
+        Status = ApprovalStatus.Rejected;
+        LastApprovedBy = approver;
     }
 }
 
 
 
-
-
-public abstract class  RequestHandler
+public interface ILeaveApprover
 {
-    protected RequestHandler NextHandler;
+    ILeaveApprover SetNext(ILeaveApprover next);
+    void Approve(LeaveRequest request);
+}
 
-    public void SetNextHandler(RequestHandler nextHandler)
+public abstract class LeaveApproverBase : ILeaveApprover
+{
+    private ILeaveApprover? _next;
+
+    public ILeaveApprover SetNext(ILeaveApprover next)
     {
-        NextHandler = nextHandler;
+        _next = next;
+        return next;
     }
 
-    public abstract void HandleRequest(CustomerRequest request);    
+    public void Approve(LeaveRequest request)
+    {
+        //if (!CanApprove(request))
+        //{
+        //    if (_next is not null)
+        //    {
+        //        _next.Approve(request);
+        //    }
+        //    else
+        //    {
+        //        request.MarkRejected(GetApproverName());
+        //    }
+
+        //    return;
+        //}
+
+        if (_next is null)
+        {
+            // Final approver (Chief / HR)
+            request.MarkApproved(GetApproverName());
+        }
+        else
+        {
+            // Intermediate approver
+            request.MarkInProgress(GetApproverName());
+            _next.Approve(request);
+        }
+    }
+
+    //protected abstract bool CanApprove(LeaveRequest request);
+    protected abstract string GetApproverName();
 }
 
 
-public class CustomerSupportHandler : RequestHandler
+
+public sealed class ManagerApprover : LeaveApproverBase
 {
-    public override void HandleRequest(CustomerRequest request)
-    {
-        if (request.RequestType == "Customer Support")
-        {
-            Console.WriteLine($"Customer Support: Handling request - {request.Description}");
-        }
-        else if (NextHandler != null)
-        {
-            NextHandler.HandleRequest(request);
-        }
-    }
+    private const int MaxDays = 3;
+
+    //protected override bool CanApprove(LeaveRequest request)
+    //    => request.NumberOfDays <= MaxDays;
+
+    protected override string GetApproverName()
+        => "Manager";
 }
-public class TechnicalSupportHandler : RequestHandler
+
+public sealed class DepartmentHeadApprover : LeaveApproverBase
 {
-    public override void HandleRequest(CustomerRequest request)
-    {
-        if (request.RequestType == "Technical Support")
-        {
-            Console.WriteLine($"Technical Support: Handling request - {request.Description}");
-        }
-        else if (NextHandler != null)
-        {
-            NextHandler.HandleRequest(request);
-        }
-    }
+    private const int MaxDays = 7;
+
+    //protected override bool CanApprove(LeaveRequest request)
+    //    => request.NumberOfDays <= MaxDays;
+
+    protected override string GetApproverName()
+        => "Department Head";
 }
-public class ManagementHandler : RequestHandler
+
+public sealed class ChiefApprover : LeaveApproverBase
 {
-    public override void HandleRequest(CustomerRequest request)
-    {
-        if (request.RequestType == "Management")
-        {
-            Console.WriteLine($"Management: Handling request - {request.Description}");
-        }
-        else if (NextHandler != null)
-        {
-            NextHandler.HandleRequest(request);
-        }
-    }
+    //protected override bool CanApprove(LeaveRequest request)
+    //    => true;
+
+    protected override string GetApproverName()
+        => "Chief / HR";
 }
+
 
 class Program
 {
-    static void Main(string[] args)
+    static void Main()
     {
-        // Create handlers
-        var customerSupport = new CustomerSupportHandler();
-        var technicalSupport = new TechnicalSupportHandler();
-        var management = new ManagementHandler();
+        // Build approval chain
+        var manager = new ManagerApprover();
+        var deptHead = new DepartmentHeadApprover();
+        var chief = new ChiefApprover();
 
-        // Set up the chain
-        customerSupport.SetNextHandler(technicalSupport);
-        technicalSupport.SetNextHandler(management);
+        manager.SetNext(deptHead).SetNext(chief);
 
-        // Create requests
-        var request1 = new CustomerRequest("Customer Support", "Need help with my account.");
-        var request2 = new CustomerRequest("Technical Support", "Having trouble with the website.");
-        var request3 = new CustomerRequest("Management", "Feedback about service quality.");
+        // Create leave request
+        var leaveRequest = new LeaveRequest(
+            employeeId: 1,
+            numberOfDays: 5,
+            reason: "Medical Leave"
+        );
 
-        // Pass requests through the chain
-        customerSupport.HandleRequest(request1);
-        customerSupport.HandleRequest(request2);
-        customerSupport.HandleRequest(request3);
+        // Process approval
+        manager.Approve(leaveRequest);
+
+        // Output result
+        Console.WriteLine($"Status           : {leaveRequest.Status}");
+        Console.WriteLine($"Last Approved By : {leaveRequest.LastApprovedBy}");
     }
 }
 
-// Source: https://dev.to/dotnetfullstackdev/implementing-chain-of-responsibility-pattern-in-c-middlewares-design-pattern-16bl
