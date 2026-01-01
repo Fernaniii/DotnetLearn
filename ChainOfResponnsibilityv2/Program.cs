@@ -8,6 +8,17 @@ public enum ApprovalStatus
     Rejected
 }
 
+public class Employee
+{
+    public int Id { get; }
+    public string Name { get; }
+    public Employee(int id, string name)
+    {
+        Id = id;
+        Name = name ?? throw new ArgumentNullException(nameof(name));
+    }
+}
+
 public sealed class LeaveRequest
 {
     public int EmployeeId { get; }
